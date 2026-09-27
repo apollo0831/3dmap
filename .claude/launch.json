@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["scripts/server.py", "8931"],
+      "port": 8931
+    },
+    {
+      "name": "web-dev",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["scripts/server.py", "8932"],
+      "port": 8932
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>두 발로 쓰는 지도 — 산행 아카이브</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="map"></div>
+
+<aside id="sidebar">
+  <header>
+    <div id="sheet-handle"><span></span></div>
+    <h1>두 발로 쓰는 지도</h1>
+    <p class="subtitle">전국 산행 아카이브</p>
+    <input id="search" type="search" placeholder="산 이름 검색…" />
+    <p id="stats-line"></p>
+  </header>
+  <ul id="hike-list"></ul>
+</aside>
+
+<div id="hike-card" class="hidden">
+  <button id="card-close" title="닫기">&times;</button>
+  <h2 id="card-title"></h2>
+  <p id="card-date"></p>
+  <div class="card-stats">
+    <span id="card-dist"></span>
+    <span id="card-gain"></span>
+    <span id="card-ele"></span>
+  </div>
+  <canvas id="profile" width="360" height="90"></canvas>
+  <div id="report-box" class="hidden">
+    <div id="report-text"></div>
+  </div>
+  <div class="card-actions">
+    <button id="report-toggle" class="hidden">산행기 읽기</button>
+    <a id="card-link" href="#" target="_blank" rel="noopener">카페 원문 →</a>
+  </div>
+</div>
+
+<button id="reset-view" title="전국 보기">전국 보기</button>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

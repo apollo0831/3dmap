@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GPX 올리기 — 두 발로 쓰는 지도</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, sans-serif;
+  background: #14171c;
+  color: #e8e4da;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px 60px;
+}
+main { width: 100%; max-width: 560px; }
+h1 { font-size: 26px; margin-bottom: 6px; }
+.subtitle { color: #9aa3ad; font-size: 15px; margin-bottom: 28px; }
+
+.step {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+.step h2 { font-size: 18px; margin-bottom: 12px; }
+.step h2 .num {
+  display: inline-block;
+  width: 28px; height: 28px; line-height: 28px;
+  text-align: center;
+  background: #e8a33d; color: #14171c;
+  border-radius: 50%;
+  font-size: 16px;
+  margin-right: 8px;
+}
+
+#passcode {
+  width: 100%;
+  font-size: 24px;
+  letter-spacing: 8px;
+  text-align: center;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  color: #e8e4da;
+  outline: none;
+}
+#passcode:focus { border-color: #e8a33d; }
+#pass-msg { margin-top: 10px; font-size: 15px; min-height: 20px; }
+
+#drop {
+  border: 2px dashed rgba(255,255,255,0.25);
+  border-radius: 12px;
+  padding: 30px 16px;
+  text-align: center;
+  font-size: 17px;
+  color: #9aa3ad;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+#drop.drag { border-color: #e8a33d; background: rgba(232,163,61,0.08); }
+#drop b { display: block; color: #e8e4da; font-size: 19px; margin-bottom: 6px; }
+
+#pick-btn {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 16px;
+  font-size: 20px;
+  font-weight: 700;
+  background: #e8a33d;
+  color: #14171c;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+}
+#pick-btn:active { transform: scale(0.99); }
+#pick-btn:disabled { opacity: .4; cursor: default; }
+
+#results { list-style: none; margin-top: 6px; }
+#results li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  font-size: 16px;
+}
+#results .icon { font-size: 18px; flex: none; }
+#results .ok .icon { color: #7dc97f; }
+#results .fail .icon { color: #e06c5a; }
+#results .detail { color: #9aa3ad; font-size: 13px; }
+
+#done-box { display: none; text-align: center; }
+#done-msg { font-size: 17px; margin-bottom: 16px; }
+#map-link {
+  display: inline-block;
+  padding: 16px 28px;
+  font-size: 20px;
+  font-weight: 700;
+  background: #e8a33d;
+  color: #14171c;
+  text-decoration: none;
+  border-radius: 12px;
+}
+.back { display: inline-block; margin-top: 24px; color: #9aa3ad; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>산행 기록 올리기</h1>
+  <p class="subtitle">GPX 파일을 올리면 지도에 산행길이 새로 그려집니다.</p>
+
+  <section class="step" id="step-pass">
+    <h2><span class="num">1</span>비밀번호 입력</h2>
+    <input id="passcode" type="tel" inputmode="numeric" maxlength="6" placeholder="○○○○○○" autocomplete="off" />
+    <p id="pass-msg"></p>
+  </section>
+
+  <section class="step" id="step-file">
+    <h2><span class="num">2</span>GPX 파일 선택</h2>
+    <div id="drop">
+      <b>여기에 파일을 끌어다 놓거나</b>
+      아래 버튼을 눌러 파일을 고르세요 (여러 개 가능)
+    </div>
+    <button id="pick-btn" disabled>파일 고르기</button>
+    <input id="file-input" type="file" accept=".gpx" multiple hidden />
+    <ul id="results"></ul>
+  </section>
+
+  <section class="step" id="done-box">
+    <p id="done-msg"></p>
+    <a id="map-link" href="./">지도 보러 가기 →</a>
+  </section>
+
+  <a class="back" href="./">← 지도로 돌아가기</a>
+</main>
+
+<script>
+const passEl = document.getElementById("passcode");
+const passMsg = document.getElementById("pass-msg");
+const pickBtn = document.getElementById("pick-btn");
+const fileInput = document.getElementById("file-input");
+const drop = document.getElementById("drop");
+const results = document.getElementById("results");
+const doneBox = document.getElementById("done-box");
+const doneMsg = document.getElementById("done-msg");
+
+let verified = false;
+
+async function checkPass() {
+  const key = passEl.value.trim();
+  verified = false;
+  pickBtn.disabled = true;
+  if (key.length < 4) { passMsg.textContent = ""; return; }
+  try {
+    const r = await fetch("api/check", { method: "POST", headers: { "X-Upload-Key": key } });
+    if (r.ok) {
+      verified = true;
+      pickBtn.disabled = false;
+      passMsg.textContent = "확인되었습니다 ✓";
+      passMsg.style.color = "#7dc97f";
+      localStorage.setItem("uploadKey", key);
+    } else {
+      passMsg.textContent = "비밀번호가 맞지 않습니다";
+      passMsg.style.color = "#e06c5a";
+    }
+  } catch {
+    passMsg.textContent = "서버에 연결할 수 없습니다";
+    passMsg.style.color = "#e06c5a";
+  }
+}
+passEl.addEventListener("input", checkPass);
+passEl.value = localStorage.getItem("uploadKey") || "";
+if (passEl.value) checkPass();
+
+pickBtn.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => handleFiles(fileInput.files));
+
+drop.addEventListener("click", () => verified && fileInput.click());
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("drag"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("drag"));
+drop.addEventListener("drop", e => {
+  e.preventDefault();
+  drop.classList.remove("drag");
+  if (verified) handleFiles(e.dataTransfer.files);
+});
+
+function addResult(cls, icon, name, detail) {
+  const li = document.createElement("li");
+  li.className = cls;
+  li.innerHTML = `<span class="icon">${icon}</span><span>${name}</span><span class="detail">${detail}</span>`;
+  results.appendChild(li);
+}
+
+async function handleFiles(fileList) {
+  const files = [...fileList].filter(f => f.name.toLowerCase().endsWith(".gpx"));
+  if (!files.length) { alert("GPX 파일이 아닙니다."); return; }
+  const key = passEl.value.trim();
+  pickBtn.disabled = true;
+  pickBtn.textContent = "올리는 중…";
+  doneBox.style.display = "none";
+
+  let okCount = 0;
+  for (const f of files) {
+    try {
+      const r = await fetch("api/upload", {
+        method: "POST",
+        headers: { "X-Upload-Key": key, "X-Filename": encodeURIComponent(f.name) },
+        body: f,
+      });
+      const j = await r.json();
+      if (j.ok) {
+        okCount++;
+        const parts = [];
+        if (j.date) parts.push(j.date);
+        if (j.distance_km) parts.push(j.distance_km + " km");
+        if (j.replaced) parts.push("기존 파일 교체");
+        addResult("ok", "✓", j.mountain || f.name, parts.join(" · "));
+      } else {
+        addResult("fail", "✗", f.name, j.error || "실패");
+      }
+    } catch {
+      addResult("fail", "✗", f.name, "전송 실패");
+    }
+  }
+
+  if (okCount) {
+    pickBtn.textContent = "지도 데이터 만드는 중…";
+    try {
+      const r = await fetch("api/rebuild", { method: "POST", headers: { "X-Upload-Key": key } });
+      const j = await r.json();
+      if (j.ok) {
+        doneMsg.textContent = `${okCount}개 산행이 지도에 추가되었습니다.` +
+          (j.total_hikes ? ` (전체 ${j.total_hikes}개)` : "");
+        doneBox.style.display = "block";
+        doneBox.scrollIntoView({ behavior: "smooth" });
+      } else {
+        doneMsg.textContent = "업로드는 되었지만 지도 반영 중 오류가 났습니다.";
+        doneBox.style.display = "block";
+      }
+    } catch {
+      doneMsg.textContent = "업로드는 되었지만 지도 반영 중 오류가 났습니다.";
+      doneBox.style.display = "block";
+    }
+  }
+
+  pickBtn.textContent = "파일 고르기";
+  pickBtn.disabled = false;
+  fileInput.value = "";
+}
+</script>
+</body>
+</html>
