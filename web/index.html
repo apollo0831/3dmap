@@ -35,6 +35,7 @@
     <div id="report-text"></div>
   </div>
   <div class="card-actions">
+    <button id="trek-btn" title="드론 시점으로 산행을 따라가기">▶ 가상 트래킹</button>
     <button id="report-toggle" class="hidden">산행기 읽기</button>
     <a id="card-link" href="#" target="_blank" rel="noopener">카페 원문 →</a>
   </div>
@@ -42,7 +43,20 @@
 
 <button id="reset-view" title="전국 보기">전국 보기</button>
 
+<div id="trek-caption"></div>
+<div id="trek-hud" class="hidden">
+  <button id="trek-play" title="재생/일시정지 (Space)">❚❚</button>
+  <div id="trek-info">
+    <div id="trek-title"></div>
+    <div id="trek-meta"><span id="trek-clock"></span><span id="trek-dist"></span><span id="trek-ele"></span></div>
+  </div>
+  <canvas id="trek-profile" width="600" height="44" title="클릭해서 이동 · ←/→ 건너뛰기"></canvas>
+  <button id="trek-speed" title="배속 (+/-)">60×</button>
+  <button id="trek-exit" title="트래킹 종료 (Esc)">&times;</button>
+</div>
+
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="trek.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

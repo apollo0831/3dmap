@@ -14,6 +14,7 @@ import re
 import sys
 import unicodedata
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -26,6 +27,9 @@ SIMPLIFY_TOLERANCE_M = 5.0
 PROFILE_POINTS = 200
 ELE_SMOOTH_WINDOW = 5
 ELE_GAIN_THRESHOLD = 3.0
+# 가상 트래킹용 시각: 이보다 긴 산행이나 시각이 역행하는 트랙은 기록 오류로 보고 버린다
+MAX_TRACK_HOURS = 24
+MIN_TIMED_FRACTION = 0.9
 
 # 참고자료 폴더(공식 코스, POI 모음, 전구간 개요) — 실제 산행 기록이 아니므로 제외
 EXCLUDE_DIR_NAMES = {"산.고개.재.봉", "1+9전구간"}
@@ -200,6 +204,53 @@ def build_profile(pts, cum):
     return out
 
 
+def parse_time(text):
+    """GPX 시각 문자열 -> UTC datetime (없거나 이상하면 None)."""
+    if not text:
+        return None
+    m = re.match(r"(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$", text.strip())
+    if not m:
+        return None
+    dt = datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}")
+    tz = m.group(3)
+    if tz and tz != "Z":
+        sign = 1 if tz[0] == "+" else -1
+        hh, mm = int(tz[1:3]), int(tz[-2:])
+        dt = dt - sign * (datetime.min.replace(hour=hh, minute=mm) - datetime.min)
+    return dt.replace(tzinfo=timezone.utc)
+
+
+def build_times(simplified, cum):
+    """단순화된 점마다 시작 후 경과 초. 가상 트래킹이 실제 GPS 시간축을 따라가는 데 쓴다.
+
+    시각이 빠진 점은 이웃 시각을 거리로 보간한다. 시각이 대부분 없거나
+    역행하거나 24시간을 넘는 트랙은 None (웹에서 거리 기반으로 합성).
+    """
+    stamps = [parse_time(p[3]) for p in simplified]
+    idx = [i for i, t in enumerate(stamps) if t is not None]
+    if len(idx) < 2 or len(idx) < len(simplified) * MIN_TIMED_FRACTION:
+        return None, None
+    t0 = stamps[idx[0]]
+    secs = [None] * len(simplified)
+    for i in idx:
+        secs[i] = (stamps[i] - t0).total_seconds()
+    known = [secs[i] for i in idx]
+    if any(b < a for a, b in zip(known, known[1:])) or known[-1] > MAX_TRACK_HOURS * 3600:
+        return None, None
+    # 앞뒤 빈 구간은 가장 가까운 시각으로, 중간 빈 구간은 거리 비례 보간
+    for i in range(idx[0]):
+        secs[i] = known[0]
+    for i in range(idx[-1] + 1, len(secs)):
+        secs[i] = known[-1]
+    for a, b in zip(idx, idx[1:]):
+        if b - a > 1:
+            span = cum[b] - cum[a]
+            for k in range(a + 1, b):
+                f = (cum[k] - cum[a]) / span if span > 0 else (k - a) / (b - a)
+                secs[k] = secs[a] + f * (secs[b] - secs[a])
+    return [round(x) for x in secs], t0.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def extract_date(pts, filename):
     for p in pts:
         if p[3]:
@@ -283,6 +334,8 @@ def main():
         dist, cum, gain, ele_min, ele_max = track_stats(pts)
         profile = build_profile(pts, cum)
         simplified = douglas_peucker(pts, SIMPLIFY_TOLERANCE_M)
+        _, cum_s, _, _, _ = track_stats(simplified)
+        times, start_time = build_times(simplified, cum_s)
 
         coords = [
             [round(p[0], 6), round(p[1], 6)] + ([round(p[2], 1)] if p[2] is not None else [])
@@ -299,9 +352,13 @@ def main():
             n += 1
         ids.add(hike_id)
 
+        props = {"id": hike_id, "title": title, "profile": profile}
+        if times:
+            props["times"] = times
+            props["start_time"] = start_time
         track_geojson = {
             "type": "Feature",
-            "properties": {"id": hike_id, "title": title, "profile": profile},
+            "properties": props,
             "geometry": {"type": "LineString", "coordinates": coords},
         }
         with open(TRACKS_DIR / f"{hike_id}.json", "w", encoding="utf-8") as f:
@@ -326,6 +383,7 @@ def main():
             "marker": [round(top[0], 6), round(top[1], 6)],
             "bounds": [round(min(lons), 6), round(min(lats), 6), round(max(lons), 6), round(max(lats), 6)],
             "points": len(coords),
+            "duration_s": times[-1] if times else None,
         })
         print(f"ok: {source} -> {hike_id} ({len(pts)} -> {len(coords)} pts, {dist/1000:.1f} km)")
 
