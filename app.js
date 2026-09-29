@@ -254,6 +254,7 @@ map.on("load", () => {
 // ---------- state ----------
 let hikes = [];
 let activeHikeId = null;
+let activeFeature = null; // 현재 그려진 트랙 (가상 트래킹 입력)
 const markers = new Map();
 
 // ---------- data ----------
@@ -458,12 +459,15 @@ async function selectHike(id, { fromMarker = false } = {}) {
   const feature = await res.json();
   await mapReady;
   if (activeHikeId !== id) return; // 기다리는 사이 다른 산행을 선택함
+  activeFeature = feature;
+  Trek.stop();
 
   if (map.getLayer("track-line")) map.removeLayer("track-line");
   if (map.getLayer("track-casing")) map.removeLayer("track-casing");
   if (map.getSource("track")) map.removeSource("track");
 
-  map.addSource("track", { type: "geojson", data: feature });
+  // lineMetrics: 가상 트래킹이 지나온 구간을 line-gradient 로 밝게 칠하는 데 필요
+  map.addSource("track", { type: "geojson", data: feature, lineMetrics: true });
   map.addLayer({
     id: "track-casing",
     type: "line",
@@ -621,12 +625,26 @@ function drawProfile(profile) {
   ctx.fillText(`${xMax.toFixed(1)}km`, W - 44, H - pad - 4);
 }
 
+// ---------- 가상 트래킹 ----------
+document.getElementById("trek-btn").addEventListener("click", () => {
+  const h = hikes.find((x) => x.id === activeHikeId);
+  if (!h || !activeFeature) return;
+  collapseReport();
+  Trek.start(map, h, activeFeature, {
+    onStop: () => {
+      // 끝나면 카드를 다시 보여준다 (모바일은 카드가 재생 전에도 없었을 수 있음)
+      if (activeHikeId === h.id && !isMobile()) cardEl.classList.remove("hidden");
+    },
+  });
+});
+
 document.getElementById("card-close").addEventListener("click", () => {
   collapseReport();
   document.getElementById("hike-card").classList.add("hidden");
 });
 
 document.getElementById("reset-view").addEventListener("click", () => {
+  Trek.stop();
   map.flyTo({ ...KOREA_VIEW, duration: 2200, essential: true });
   collapseReport();
   document.getElementById("hike-card").classList.add("hidden");
